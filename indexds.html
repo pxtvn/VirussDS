@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Flappy Virus Mobile</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #2c3e50;
+            touch-action: none;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            background-color: #3498db;
+        }
+        #gameOver, #startScreen {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            color: white;
+            text-align: center;
+            border-radius: 10px;
+            display: none;
+        }
+        #startScreen {
+            display: block;
+        }
+        button {
+            padding: 10px 20px;
+            margin-top: 15px;
+            background: #e74c3c;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="startScreen">
+        <h2>Flappy Virus</h2>
+        <p>Chạm vào màn hình để nhảy</p>
+        <button id="startButton">Bắt đầu</button>
+    </div>
+    
+    <div id="gameOver">
+        <h2>Game Over!</h2>
+        <p>Điểm: <span id="finalScore">0</span></p>
+        <button onclick="startGame()">Chơi lại</button>
+    </div>
+
+    <script>
+        // Game elements
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const startButton = document.getElementById('startButton');
+        const gameOverDiv = document.getElementById('gameOver');
+        const finalScoreSpan = document.getElementById('finalScore');
+
+        // Load virus image
+        const virusImg = new Image();
+        virusImg.src = 'assets/images/virus.png';
+        const virusSize = 40; // Kích thước virus
+
+        // Pipe settings (using simple rectangles)
+        const pipeColor = '#27ae60';
+        const pipeWidth = 80;
+
+        // Game objects
+        const ground = {
+            x: 0,
+            y: 0,
+            height: 50,
+            speed: 3
+        };
+
+        // Initialize canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            ground.y = canvas.height - ground.height;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Player setup
+        const player = {
+            x: canvas.width / 2 - virusSize/2,
+            y: canvas.height / 2,
+            velocity: 0,
+            gravity: 0.5,
+            jump: -10,
+            rotation: 0
+        };
+
+        const pipes = [];
+        let score = 0;
+        let gameLoop;
+        let isPlaying = false;
+        let frames = 0;
+
+        // Game functions
+        function startGame() {
+            player.x = canvas.width / 2 - virusSize/2;
+            player.y = canvas.height / 2;
+            player.velocity = 0;
+            player.rotation = 0;
+            pipes.length = 0;
+            score = 0;
+            frames = 0;
+            startScreen.style.display = 'none';
+            gameOverDiv.style.display = 'none';
+            isPlaying = true;
+            
+            cancelAnimationFrame(gameLoop);
+            gameLoop = requestAnimationFrame(update);
+        }
+
+        function jump() {
+            if (!isPlaying) return;
+            player.velocity = player.jump;
+            player.rotation = -20; // Nhẹ nhàng xoay khi nhảy
+        }
+
+        // Mobile touch controls
+        startButton.addEventListener('click', startGame);
+        document.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            if (!isPlaying && startScreen.style.display === 'block') {
+                startGame();
+            } else {
+                jump();
+            }
+        });
+
+        // Keyboard support (for testing)
+        document.addEventListener('keydown', function(e) {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                jump();
+            }
+        });
+
+        // Pipe generation
+        function createPipe() {
+            const gap = 200; // Khoảng trống giữa các ống
+            const minHeight = 80;
+            
+            const topHeight = minHeight + Math.random() * (canvas.height - gap - minHeight * 2 - ground.height);
+            
+            pipes.push({
+                x: canvas.width,
+                topHeight: topHeight,
+                bottomHeight: canvas.height - topHeight - gap - ground.height,
+                width: pipeWidth,
+                scored: false
+            });
+        }
+
+        // Collision detection
+        function checkCollision() {
+            // Với mặt đất
+            if (player.y + virusSize > ground.y) {
+                return true;
+            }
+            
+            // Với trần
+            if (player.y < 0) {
+                return true;
+            }
+            
+            // Với các ống
+            for (const pipe of pipes) {
+                const playerRight = player.x + virusSize;
+                const playerLeft = player.x;
+                const playerBottom = player.y + virusSize;
+                const playerTop = player.y;
+                
+                // Ống trên
+                if (playerRight > pipe.x && 
+                    playerLeft < pipe.x + pipe.width && 
+                    playerTop < pipe.topHeight) {
+                    return true;
+                }
+                
+                // Ống dưới
+                const bottomPipeTop = canvas.height - pipe.bottomHeight - ground.height;
+                if (playerRight > pipe.x && 
+                    playerLeft < pipe.x + pipe.width && 
+                    playerBottom > bottomPipeTop) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        // Main game loop
+        function update() {
+            if (!isPlaying) return;
+            frames++;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background
+            ctx.fillStyle = '#3498db';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update player physics
+            player.velocity += player.gravity;
+            player.y += player.velocity;
+            
+            // Auto-rotate based on velocity
+            player.rotation = Math.min(player.rotation + 0.5, 90);
+            player.rotation = Math.max(player.velocity * 3, -20);
+
+            // Create new pipes
+            if (frames % 100 === 0) { // Mỗi ~1.7 giây
+                createPipe();
+            }
+
+            // Update and draw pipes
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                pipes[i].x -= 3; // Tốc độ ống
+
+                // Tính điểm
+                if (!pipes[i].scored && pipes[i].x + pipes[i].width < player.x) {
+                    score++;
+                    pipes[i].scored = true;
+                }
+
+                // Remove off-screen pipes
+                if (pipes[i].x + pipes[i].width < 0) {
+                    pipes.splice(i, 1);
+                    continue;
+                }
+
+                // Vẽ ống
+                ctx.fillStyle = pipeColor;
+                ctx.fillRect(pipes[i].x, 0, pipes[i].width, pipes[i].topHeight);
+                
+                const bottomPipeY = canvas.height - pipes[i].bottomHeight - ground.height;
+                ctx.fillRect(pipes[i].x, bottomPipeY, pipes[i].width, pipes[i].bottomHeight);
+            }
+
+            // Draw ground
+            ctx.fillStyle = '#34495e';
+            ctx.fillRect(0, ground.y, canvas.width, ground.height);
+
+            // Draw player (virus image)
+            if (virusImg.complete) {
+                ctx.save();
+                ctx.translate(player.x + virusSize/2, player.y + virusSize/2);
+                ctx.rotate(player.rotation * Math.PI / 180);
+                ctx.drawImage(
+                    virusImg, 
+                    -virusSize/2, -virusSize/2, 
+                    virusSize, virusSize
+                );
+                ctx.restore();
+            } else {
+                // Fallback: red circle
+                ctx.fillStyle = '#e74c3c';
+                ctx.beginPath();
+                ctx.arc(player.x + virusSize/2, player.y + virusSize/2, virusSize/2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Draw score
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 24px Arial';
+            ctx.fillText(`Điểm: ${score}`, 20, 40);
+
+            // Check collisions
+            if (checkCollision()) {
+                gameOver();
+                return;
+            }
+
+            gameLoop = requestAnimationFrame(update);
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            gameOverDiv.style.display = 'block';
+            finalScoreSpan.textContent = score;
+            cancelAnimationFrame(gameLoop);
+        }
+
+        // Initialize game
+        window.onload = function() {
+            startScreen.style.display = 'block';
+        };
+    </script>
+</body>
+</html>
